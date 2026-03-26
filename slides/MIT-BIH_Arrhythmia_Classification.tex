@@ -1,0 +1,199 @@
+\documentclass{beamer}
+
+% Hỗ trợ hiển thị tiếng Việt
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage[vietnamese,english]{babel}
+
+% Các gói hỗ trợ hiển thị bảng biểu và hình ảnh
+\usepackage{booktabs}
+\usepackage{graphicx}
+
+% Chọn theme cho slide (có thể thay đổi thành CambridgeUS, default, metropolis...)
+\usetheme{Madrid}
+\usecolortheme{default}
+
+% Thông tin trang bìa (Title Slide)
+\title[ECG Analysis with MIT-BIH]{ECG Analysis with MIT-BIH}
+\subtitle{Progress Report}
+\author[Nguyen Son Hai]{Presenter: Nguyen Son Hai \\ Group 2}
+\institute[NEU - FDA - Business AI Lab]{
+    Business AI Lab \\
+    Khoa Khoa học Dữ liệu và Trí tuệ Nhân tạo (FDA) \\
+    Trường Công nghệ \\
+    Đại học Kinh tế Quốc dân (NEU)
+}
+\date{Spring, 2026}
+
+\begin{document}
+
+% Slide 0: Trang bìa
+\begin{frame}
+    \titlepage
+\end{frame}
+
+% Slide 1: Giới thiệu Dataset
+\begin{frame}{MIT-BIH Arrhythmia Database}
+    \begin{itemize}
+        \item \textbf{Comprehensive Dataset:} Chứa 48 đoạn trích dài nửa giờ của các bản ghi ECG theo dõi lưu động hai kênh từ 47 đối tượng. \vspace{0.3cm}
+        \item \textbf{Diverse Origins:} 23 bản ghi là các mẫu ngẫu nhiên từ 4000 bản ghi ECG 24 giờ, trong khi 25 bản ghi được chọn lọc để bao gồm các rối loạn nhịp tim hiếm gặp nhưng có ý nghĩa lâm sàng. \vspace{0.3cm}
+        \item \textbf{High Fidelity Data:} Tất cả các bản ghi đều được số hóa với tốc độ 360 mẫu mỗi giây trên mỗi kênh.
+    \end{itemize}
+\end{frame}
+
+% Slide 2: Phân loại nhịp
+\begin{frame}{Standardized Arrhythmia Classification}
+    Để đơn giản hóa việc phân tích và đảm bảo tính nhất quán, các nhãn được phân loại lại thành 5 danh mục (chuẩn AAMI EC57):
+    \vspace{0.3cm}
+    \begin{enumerate}
+        \item \textbf{Normal (N):} Nhịp tim bình thường (đường cơ sở).
+        \item \textbf{Supraventricular Ectopic (S):} Nhịp bất thường bắt nguồn từ phía trên tâm thất.
+        \item \textbf{Ventricular Ectopic (V):} Nhịp bất thường bắt nguồn từ tâm thất (ví dụ: PVCs).
+        \item \textbf{Fusion (F):} Nhịp sinh ra do sự kích hoạt đồng thời của tâm thất bởi xung bình thường và ngoại tâm mạc.
+        \item \textbf{Unclassified (Q):} Nhịp được tạo nhịp, không thể phân loại, hoặc bị che khuất bởi nhiễu.
+    \end{enumerate}
+\end{frame}
+
+% Slide 3: Phân phối dữ liệu
+\begin{frame}{AAMI EC57 Classification Distribution}
+    \textbf{Tổng số nhịp (Total Beats):} 109,494
+    \vspace{0.5cm}
+    
+    \begin{table}[]
+        \centering
+        \begin{tabular}{llrr}
+        \toprule
+        \textbf{Ký hiệu} & \textbf{Nhãn (Label)} & \textbf{Số lượng} & \textbf{Tỷ lệ (\%)} \\
+        \midrule
+        \textbf{N} & Normal & 90,631 & 82.8\% \\
+        \textbf{S} & Supraventricular Ectopic & 2,781 & 2.5\% \\
+        \textbf{V} & Ventricular Ectopic & 7,236 & 6.6\% \\
+        \textbf{F} & Fusion & 803 & 0.7\% \\
+        \textbf{Q} & Unclassified & 8,043 & 7.3\% \\
+        \bottomrule
+        \end{tabular}
+    \end{table}
+\end{frame}
+
+% Slide 4: Đặc trưng nhịp
+\begin{frame}{MIT-BIH Record 100 - Nhịp \#3}
+    \begin{itemize}
+        \item Đồ thị biểu diễn hình thái tín hiệu với các đặc trưng sóng cơ bản. \vspace{0.3cm}
+        \item \textbf{Hệ trục tọa độ:}
+        \begin{itemize}
+            \item Trục tung: Biên độ (mV)
+            \item Trục hoành: Thời gian (s)
+        \end{itemize} \vspace{0.3cm}
+        \item \textbf{Các điểm/sóng đặc trưng được gắn nhãn:}
+        \begin{itemize}
+            \item Sóng \textbf{P}
+            \item Phức bộ \textbf{QRS} (bao gồm Sóng \textbf{Q}, \textbf{R}, \textbf{S})
+            \item Sóng \textbf{T}
+        \end{itemize}
+    \end{itemize}
+    % Nếu bạn có file ảnh biểu đồ, hãy bỏ comment dòng bên dưới và thay đổi tên file
+    % \begin{center} \includegraphics[width=0.7\textwidth]{ten-file-anh.png} \end{center}
+\end{frame}
+
+% Slide 5: Kỹ thuật lọc tín hiệu phần 1
+\begin{frame}{ECG Signal Filtering Techniques (1)}
+    \textbf{Áp dụng bộ lọc Band-pass (0.5 - 40 Hz)}
+    \begin{itemize}
+        \item Chỉ cho phép tín hiệu có tần số từ 0.5 Hz đến 40 Hz đi qua, và chặn các tín hiệu ngoài dải này.
+        \item \textbf{Tại sao là 0.5 - 40 Hz?} \\ Hầu hết thông tin lâm sàng quan trọng (sóng P, phức bộ QRS, sóng T) dao động trong dải tần số này.
+        \begin{itemize}
+            \item \textit{Dưới 0.5 Hz:} Chặn các tần số rất thấp giúp loại bỏ các chuyển động chậm (như nhịp thở của bệnh nhân).
+            \item \textit{Trên 40 Hz:} Chặn tần số cao giúp loại bỏ nhiễu cơ (EMG - sinh ra khi căng cơ/run rẩy) và các nhiễu điện tử khác.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+% Slide 6: Kỹ thuật lọc tín hiệu phần 2
+\begin{frame}{ECG Signal Filtering Techniques (2)}
+    \textbf{Loại bỏ nhiễu điện lưới (50/60 Hz)}
+    \begin{itemize}
+        \item \textbf{Nguyên nhân:} Các thiết bị y tế, đèn huỳnh quang sử dụng dòng điện xoay chiều phát ra trường điện từ ở tần số cố định (50 Hz ở VN/Á/Âu hoặc 60 Hz ở Mỹ/Nhật). Dây dẫn ECG có thể hoạt động như ăng-ten thu nhận nhiễu này.
+        \item \textbf{Giải pháp:} Sử dụng \textbf{Notch Filter} (bộ lọc chặn dải) để triệt tiêu dải tần số 50 Hz/60 Hz mà không làm ảnh hưởng đến hình thái thực sự của nhịp tim.
+    \end{itemize}
+\end{frame}
+
+% Slide 7: Các bước xử lý tín hiệu
+\begin{frame}{Các bước xử lý tín hiệu (Trực quan hóa)}
+    Quá trình làm sạch tín hiệu tuần tự:
+    \vspace{0.3cm}
+    \begin{enumerate}
+        \item \textbf{Tín hiệu gốc:} Biên độ tính bằng mV.
+        \item \textbf{Sau Lọc Notch 60 Hz:} Power Line Interference Removed.
+        \item \textbf{Sau Lọc Band-pass 0.5 - 40 Hz:} Baseline Wander \& Artifacts Removed.
+        \item \textbf{Sau khi Chuẩn hóa Z-Score:} Normalization.
+    \end{enumerate}
+\end{frame}
+
+% ===== Phần tích hợp từ slides/main.tex =====
+\begin{frame}{Bối cảnh bài toán ARIMA với ECG}
+    \begin{itemize}
+        \item Dữ liệu ECG là chuỗi thời gian có cấu trúc lặp theo nhịp tim.
+        \item Mỗi nhịp gồm các pha P-QRS-T, lặp lại theo chu kỳ gần đúng.
+        \item ARIMA thuần thường chưa tốt khi dữ liệu có mùa vụ rõ như ECG.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Trực giác về ARIMA}
+    ARIMA$(p,d,q)$ mô hình hoá:
+    \[
+        y_t = c + \sum_{i=1}^{p}\phi_i y_{t-i} + \sum_{j=1}^{q}\theta_j\varepsilon_{t-j} + \varepsilon_t
+    \]
+    \vspace{0.4cm}
+    \begin{itemize}
+        \item $p,q$ chủ yếu khai thác quan hệ ngắn hạn giữa các điểm gần nhau.
+        \item ECG lại có phụ thuộc theo chu kỳ tim (xa hơn nhiều sample).
+        \item Nếu tăng $p,q$ để bắt chu kỳ xa thì số tham số tăng mạnh.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Điểm yếu chính của ARIMA trên ECG}
+    \begin{enumerate}
+        \item Chu kỳ dài theo sample: với fs = 360 Hz, 1 nhịp xấp xỉ 1 giây thì độ trễ mùa vụ khoảng $s\approx 360$.
+        \item Tăng $p,q$ để “nhìn xa” làm mô hình phức tạp, dễ overfit.
+        \item Một nhịp tim gồm nhiều sóng khác nhau (P, QRS, T), nên điểm quá gần chưa phản ánh đủ hình thái cả nhịp.
+    \end{enumerate}
+\end{frame}
+
+\begin{frame}{Hệ quả thực tế khi chỉ dùng ARIMA}
+    \begin{itemize}
+        \item Chất lượng đặc trưng cho classification giảm.
+        \item Mô hình tối ưu theo AIC/BIC có thể đẩy lên cấu hình lớn nhưng kém ổn định.
+        \item Chi phí tính toán tăng khi quét nhiều tổ hợp $p,q$.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Hướng cải tiến: SARIMA}
+    \[
+        \text{SARIMA}(p,d,q)\times(P,D,Q)_s
+    \]
+    \begin{itemize}
+        \item $s$: độ dài chu kỳ mùa vụ.
+        \item $P,Q$: học quan hệ trực tiếp tại các mốc $t-s, t-2s, \dots$.
+        \item Mô tả chu kỳ rõ ràng hơn mà không cần tăng quá lớn $p,q$ thường.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Chiến lược đề xuất trong dự án}
+    \begin{enumerate}
+        \item Chọn 1 record đại diện để ước lượng $d$ bằng ADF.
+        \item Dò $s$ bằng AIC/BIC trên SARIMA (giữ cố định $P,D,Q$ ban đầu).
+        \item Dò $p,q$ bằng BIC trên SARIMA.
+        \item Dùng bộ tham số tốt nhất làm đặc trưng bổ sung cho classifier cơ bản.
+    \end{enumerate}
+\end{frame}
+
+% Slide 8: Kết thúc
+\begin{frame}
+    \begin{center}
+        \Huge \textbf{Cảm ơn các bạn đã lắng nghe!} \\
+        \vspace{0.5cm}
+        \large Nếu có câu hỏi hoặc góp ý, xin mời chia sẻ! \\
+    \end{center}
+\end{frame}
+
+\end{document}
