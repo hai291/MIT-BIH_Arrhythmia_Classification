@@ -8,6 +8,7 @@
 % Các gói hỗ trợ hiển thị bảng biểu và hình ảnh
 \usepackage{booktabs}
 \usepackage{graphicx}
+\usepackage{hyperref}
 
 % Chọn theme cho slide (có thể thay đổi thành CambridgeUS, default, metropolis...)
 \usetheme{Madrid}
@@ -187,12 +188,30 @@
     \end{enumerate}
 \end{frame}
 
+\begin{frame}{Cách chọn khoảng dò $s$ (theo sinh lý tim)}
+    \begin{itemize}
+        \item Nhịp tim người trưởng thành lúc nghỉ thường trong khoảng \textbf{60--100 bpm}.
+        \item Suy ra thời gian 1 nhịp:
+        \[
+            T = \frac{60}{HR} \Rightarrow T \in [0.6, 1.0]\ \text{giây}
+        \]
+        \item Với dữ liệu MIT-BIH có tần số lấy mẫu $fs=360$ Hz:
+        \[
+            s = T\cdot fs \Rightarrow s \in [0.6\cdot 360,\ 1.0\cdot 360] = [216, 360]
+        \]
+        \item Vì vậy chỉ dò $s$ trong \textbf{[216, 360]} thay vì toàn miền.
+        \item Dùng bước nhảy \textbf{5} mẫu để giảm số tổ hợp, tránh mô hình quá lâu.
+    \end{itemize}
+\end{frame}
+
 % Slide 8: Kết thúc
 \begin{frame}
     \begin{center}
         \Huge \textbf{Cảm ơn các bạn đã lắng nghe!} \\
         \vspace{0.5cm}
         \large Nếu có câu hỏi hoặc góp ý, xin mời chia sẻ! \\
+        \vspace{0.5cm}
+        \normalsize GitHub: \url{https://github.com/hai291/MIT-BIH_Arrhythmia_Classification.git}
     \end{center}
 \end{frame}
 
