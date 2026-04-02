@@ -155,7 +155,7 @@
 \begin{frame}{Điểm yếu chính của ARIMA trên ECG}
     \begin{enumerate}
         \item Chu kỳ dài theo sample: với fs = 360 Hz, 1 nhịp xấp xỉ 1 giây thì độ trễ mùa vụ khoảng $s\approx 360$.
-        \item Tăng $p,q$ để “nhìn xa” làm mô hình phức tạp, dễ overfit.
+        \item Tăng $p,q$ để “nhìn xa” làm mô hình phức tạp.
         \item Một nhịp tim gồm nhiều sóng khác nhau (P, QRS, T), nên điểm quá gần chưa phản ánh đủ hình thái cả nhịp.
     \end{enumerate}
 \end{frame}
@@ -166,6 +166,34 @@
         \item Mô hình tối ưu theo AIC/BIC có thể đẩy lên cấu hình lớn nhưng kém ổn định.
         \item Chi phí tính toán tăng khi quét nhiều tổ hợp $p,q$.
     \end{itemize}
+\end{frame}
+
+\begin{frame}{AIC vs BIC trong chọn mô hình}
+    Với số tham số $k$, số mẫu $n$, và log-likelihood $\log\hat{L}$:
+    \[
+        \text{AIC} = 2k - 2\log\hat{L}
+    \]
+    \[
+        \text{BIC} = k\log(n) - 2\log\hat{L}
+    \]
+    \vspace{0.3cm}
+    \begin{itemize}
+        \item AIC phạt độ phức tạp bằng hằng số $2k$.
+        \item BIC phạt theo $\log(n)$ nên mạnh hơn khi $n$ lớn.
+        \item Cả hai đều cân bằng giữa độ khớp dữ liệu và độ đơn giản của mô hình.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Vì sao chọn BIC thay vì AIC cho bài toán này?}
+    \begin{itemize}
+        \item Dữ liệu ECG trong dự án có số mẫu lớn, nên $\log(n)$ đáng kể.
+        \item Khi đó BIC phạt mạnh mô hình nhiều tham số hơn AIC.
+        \item BIC giúp tránh chọn SARIMA quá lớn khi dò nhiều tổ hợp $(p,d,q,s)$.
+        \item Mục tiêu của nhóm là mô hình gọn, ổn định và tổng quát hóa tốt hơn trên tập lớn.
+    \end{itemize}
+    \vspace{0.3cm}
+    \textbf{Kết luận:} Với dữ liệu nhiều mẫu, chọn \textbf{BIC} là hợp lý để hạn chế overfitting
+    và kiểm soát độ phức tạp mô hình.
 \end{frame}
 
 \begin{frame}{Hướng cải tiến: SARIMA}
@@ -202,6 +230,30 @@
         \item Vì vậy chỉ dò $s$ trong \textbf{[216, 360]} thay vì toàn miền.
         \item Dùng bước nhảy \textbf{5} mẫu để giảm số tổ hợp, tránh mô hình quá lâu.
     \end{itemize}
+\end{frame}
+
+\begin{frame}{Kết quả fit SARIMA theo BIC (ví dụ tại $s=216$)}
+    \scriptsize
+    \begin{table}[]
+        \centering
+        \begin{tabular}{ccc|r}
+        \toprule
+        $p$ & $d$ & $q$ & BIC \\
+        \midrule
+        0 & 0 & 0 & 1602.425 \\
+        0 & 0 & 1 & -4664.715 \\
+        0 & 0 & 2 & -9927.263 \\
+        0 & 0 & 3 & -13665.959 \\
+        1 & 0 & 0 & -14523.228 \\
+        1 & 0 & 1 & -18098.870 \\
+        1 & 0 & 2 & -19514.737 \\
+        \textbf{1} & \textbf{0} & \textbf{3} & \textbf{-19625.312} \\
+        \bottomrule
+        \end{tabular}
+    \end{table}
+    \vspace{0.2cm}
+    \normalsize
+    \textbf{Nhận xét:} BIC nhỏ nhất tại cấu hình \textbf{SARIMA$(1,0,3)\times(1,0,1)_{216}$}.
 \end{frame}
 
 % Slide 8: Kết thúc
