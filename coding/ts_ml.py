@@ -1,4 +1,18 @@
 import warnings
+import json
+import gc
+import os
+from datetime import datetime
+from pathlib import Path
+
+# Chỉ áp dụng cho tiến trình chạy file này: dùng tối đa số lõi CPU hiện có
+_CPU_COUNT = os.cpu_count() or 1
+os.environ.setdefault("OMP_NUM_THREADS", str(_CPU_COUNT))
+os.environ.setdefault("OPENBLAS_NUM_THREADS", str(_CPU_COUNT))
+os.environ.setdefault("MKL_NUM_THREADS", str(_CPU_COUNT))
+os.environ.setdefault("NUMEXPR_NUM_THREADS", str(_CPU_COUNT))
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", str(_CPU_COUNT))
+os.environ.setdefault("BLIS_NUM_THREADS", str(_CPU_COUNT))
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -45,6 +59,60 @@ MITBIH_RECORDS = [
 	"200", "201", "202", "203", "205", "207", "208", "209", "210", "212", "213", "214",
 	"215", "217", "219", "220", "221", "222", "223", "228", "230", "231", "232", "233", "234",
 ]
+
+# Chế độ an toàn để tránh bị hệ điều hành kill do thiếu RAM khi dò SARIMA
+SARIMA_TUNING_MAX_POINTS = 5000
+SARIMA_P_MAX = 3
+SARIMA_Q_MAX = 3
+SARIMA_S_MIN = 216
+SARIMA_S_MAX = 300
+SARIMA_S_STEP = 12
+
+
+def configure_runtime_resources(use_all_cores: bool = True) -> None:
+	"""Thiết lập affinity và thread cho riêng tiến trình hiện tại."""
+	if not use_all_cores:
+		return
+
+	cpu_count = os.cpu_count() or 1
+	try:
+		# Linux: pin process vào toàn bộ core khả dụng (chỉ áp dụng tiến trình này)
+		os.sched_setaffinity(0, set(range(cpu_count)))
+		print(f"CPU affinity đã set cho tiến trình hiện tại: {cpu_count} cores")
+	except Exception:
+		print("Không set được CPU affinity, tiếp tục với cấu hình mặc định của hệ điều hành.")
+
+	print(
+		"Thread settings -> "
+		f"OMP={os.environ.get('OMP_NUM_THREADS')} | "
+		f"OPENBLAS={os.environ.get('OPENBLAS_NUM_THREADS')} | "
+		f"MKL={os.environ.get('MKL_NUM_THREADS')}"
+	)
+
+
+def configure_aggressive_priority() -> None:
+	"""
+	Ưu tiên CPU tối đa cho tiến trình hiện tại.
+	- Cần quyền root cho mức ưu tiên realtime.
+	- Nếu không có quyền, sẽ fallback về mức có thể dùng.
+	"""
+	pid = os.getpid()
+	print(f"PID hiện tại: {pid}")
+
+	# 1) Cố gắng đặt nice = -20 (ưu tiên cao nhất kiểu timesharing)
+	try:
+		os.nice(-20)
+		print("Đã đặt nice=-20 cho tiến trình hiện tại.")
+	except Exception:
+		print("Không thể set nice=-20 (thường cần sudo).")
+
+	# 2) Cố gắng chuyển sang realtime scheduling để các tiến trình khác phải nhường
+	try:
+		max_prio = os.sched_get_priority_max(os.SCHED_FIFO)
+		os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(max_prio))
+		print(f"Đã bật realtime SCHED_FIFO priority={max_prio}.")
+	except Exception:
+		print("Không thể bật SCHED_FIFO (thường cần sudo/cap_sys_nice).")
 
 
 def load_wfdb_signal(
@@ -159,19 +227,20 @@ def fit_sarima_and_report(
 def search_best_sarima_bic(
 	series: pd.Series,
 	d: int,
-	p_max: int = 5,
-	q_max: int = 5,
+	p_max: int = SARIMA_P_MAX,
+	q_max: int = SARIMA_Q_MAX,
 	seasonal_order_fixed: tuple[int, int, int] = (1, 0, 1),
-	s_min: int = 216,
-	s_max: int = 360,
-	s_step: int = 5,
-	max_points_for_tuning: int = 20000,
+	s_min: int = SARIMA_S_MIN,
+	s_max: int = SARIMA_S_MAX,
+	s_step: int = SARIMA_S_STEP,
+	max_points_for_tuning: int = SARIMA_TUNING_MAX_POINTS,
 ) -> pd.DataFrame:
 	"""Dò p,q và cả s theo BIC cho SARIMA; giữ cố định P,D,Q."""
 	rows = []
 	work = series.dropna()
 	if len(work) > max_points_for_tuning:
 		work = work.iloc[:max_points_for_tuning]
+	print(f"SARIMA tuning dùng {len(work)} điểm dữ liệu | p<= {p_max}, q<= {q_max}, s={s_min}..{s_max} (step={s_step})")
 
 	P, D, Q = seasonal_order_fixed
 	for s in range(s_min, s_max + 1, s_step):
@@ -186,6 +255,12 @@ def search_best_sarima_bic(
 						enforce_invertibility=False,
 					).fit(disp=False)
 					rows.append({"p": p, "d": d, "q": q, "s": s, "bic": result.bic, "aic": result.aic})
+					print(f"Đã fit SARIMA(p={p},d={d},q={q})x(P={P},D={D},Q={Q},s={s}) -> BIC={result.bic:.3f}")
+					del result
+					gc.collect()
+				except MemoryError:
+					print("Thiếu RAM khi fit SARIMA, dừng dò thêm tham số.")
+					break
 				except Exception:
 					continue
 
@@ -270,6 +345,55 @@ def build_feature_matrix_with_pdq(X_beats: np.ndarray, p: int = 4, d: int = 0, q
 	X_norm = zscore_per_beat(X_beats)
 	pdq_feat = np.tile(np.array([[p, d, q]], dtype=np.float32), (len(X_norm), 1))
 	return np.hstack([X_norm, pdq_feat])
+
+
+def save_sarima_arima_params(
+	P: int,
+	D: int,
+	Q: int,
+	s: int,
+	p: int,
+	d: int,
+	q: int,
+	acc: float | None = None,
+	macro_f1: float | None = None,
+	weighted_f1: float | None = None,
+	output_file: str = "sarima_arima_params.json",
+) -> Path:
+	"""Lưu tham số và metric ra file JSON."""
+	payload = {
+		"saved_at": datetime.now().isoformat(timespec="seconds"),
+		"seasonal_params": {"P": P, "D": D, "Q": Q, "s": s},
+		"non_seasonal_params": {"p": p, "d": d, "q": q},
+		"metrics": {
+			"accuracy": acc,
+			"macro_f1": macro_f1,
+			"weighted_f1": weighted_f1,
+		},
+	}
+
+	out_path = Path(__file__).resolve().parent / output_file
+	out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+	print(f"Đã lưu tham số vào: {out_path}")
+	return out_path
+
+
+def save_sarima_pdq_bic_to_excel(
+	table: pd.DataFrame,
+	output_file: str = "sarima_pdq_bic.xlsx",
+) -> Path:
+	"""Lưu bảng kết quả dò SARIMA (p,d,q,s,bic,aic) ra file Excel."""
+	if table.empty:
+		raise ValueError("Bảng kết quả SARIMA rỗng, không thể xuất Excel.")
+
+	cols_priority = ["p", "d", "q", "s", "bic", "aic"]
+	cols = [c for c in cols_priority if c in table.columns]
+	export_df = table[cols].copy()
+
+	out_path = Path(__file__).resolve().parent / output_file
+	export_df.to_excel(out_path, index=False, sheet_name="sarima_bic")
+	print(f"Đã lưu bảng p,d,q và BIC vào: {out_path}")
+	return out_path
 
 
 def run_logistic_regression_with_arima_features(
@@ -370,31 +494,27 @@ def run_logistic_regression_with_arima_features(
 
 
 def main() -> None:
+	configure_runtime_resources(use_all_cores=True)
+	configure_aggressive_priority()
+
 	# ========== STEP 1: CHỌN d TỪ MỘT RECORD DUY NHẤT ==========
 	adf_record = "104"
 	pn_dir = "mitdb"
-	print("Đang tải toàn bộ chuỗi từ record tham chiếu để chọn d bằng ADF...")
 	series, fs = load_wfdb_signal(record_name=adf_record, pn_dir=pn_dir, duration_sec=None)
 	print(f"Record tham chiếu: {adf_record} | fs={fs}Hz | số mẫu={len(series)}")
-
-	d, adf_results = choose_d_by_adf(series, max_d=3, alpha=0.05)
-	print("\n===== KẾT QUẢ ADF =====")
-	for r in adf_results:
-		print(f"d={r['d']}: ADF={r['adf_stat']:.4f}, p-value={r['p_value']:.6f}")
-	print(f"=> d tối ưu theo ADF: {d}")
 
 	# ========== STEP 2: DÒ p,q CHO SARIMA THEO BIC ==========
 	seasonal_order_fixed = (1, 0, 1)
 	table = search_best_sarima_bic(
 		series=series,
-		d=d,
-		p_max=5,
-		q_max=5,
+		d=0,
+		p_max=SARIMA_P_MAX,
+		q_max=SARIMA_Q_MAX,
 		seasonal_order_fixed=seasonal_order_fixed,
-		s_min=216,
-		s_max=360,
-		s_step=5,
-		max_points_for_tuning=20000,
+		s_min=SARIMA_S_MIN,
+		s_max=SARIMA_S_MAX,
+		s_step=SARIMA_S_STEP,
+		max_points_for_tuning=SARIMA_TUNING_MAX_POINTS,
 	)
 	if table.empty:
 		print("Không dò được SARIMA hợp lệ.")
@@ -402,14 +522,14 @@ def main() -> None:
 
 	print("\n===== TOP 10 SARIMA TỐT NHẤT THEO BIC =====")
 	print(table.head(10).to_string(index=False))
+	save_sarima_pdq_bic_to_excel(table, output_file="sarima_pdq_bic.xlsx")
 
 	best = table.iloc[0]
 	p_best = int(best["p"])
 	q_best = int(best["q"])
 	s_best = int(best["s"])
-	print(f"\n=> Chọn theo BIC: p={p_best}, d={d}, q={q_best}, s={s_best}")
-
-
+	P_fixed, D_fixed, Q_fixed = seasonal_order_fixed
+	print(f"\n=> Chọn theo BIC: p={p_best}, d={0}, q={q_best}, s={s_best}")
 
 	# ========== STEP 3: CLASSIFICATION TRÊN TẤT CẢ RECORD ==========
 	print("\n===== CLASSIFICATION TRÊN TOÀN BỘ RECORD =====")
@@ -418,13 +538,26 @@ def main() -> None:
 		max_records=len(MITBIH_RECORDS),
 		max_samples=8000,
 		p=p_best,
-		d=d,
+		d=0,
 		q=q_best,
 	)
 
 	print("\n===== TÓM TẮT CUỐI =====")
-	print(f"Dùng tham số từ SARIMA: p={p_best}, d={d}, q={q_best}, s={s_best}")
+	print(f"Dùng tham số từ SARIMA: p={p_best}, d={0}, q={q_best}, s={s_best}")
 	print(f"Accuracy={acc:.4f} | Macro-F1={macro_f1:.4f} | Weighted-F1={weighted_f1:.4f}")
+
+	save_sarima_arima_params(
+		P=P_fixed,
+		D=D_fixed,
+		Q=Q_fixed,
+		s=s_best,
+		p=p_best,
+		d=0,
+		q=q_best,
+		acc=acc,
+		macro_f1=macro_f1,
+		weighted_f1=weighted_f1,
+	)
 
 
 if __name__ == "__main__":
